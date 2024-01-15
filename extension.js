@@ -49,44 +49,70 @@ function activate(context) {
             vscode.workspace.workspaceFolders[0].uri
         )
 
-        const data = {...config.get('openInDocker')}
+        let multiple
+        const newConn = 'Configure another container'
+        const resetConn = 'Reset all configurations'
+        const options = [newConn, resetConn]
 
+        if(config.get('openInDocker') !== undefined){
+            do{
+                multiple = await vscode.window.showQuickPick(options,{
+                    placeHolder: "One or more connections are already present!",
+                });
+    
+                if(multiple === undefined){
+                    return undefined
+                }
+            }while(!options.includes(multiple));
+        }
+
+        let data
+        let newData = {}
+
+        if( multiple === newConn ){
+            data = {...config.get('openInDocker')}
+            newData = data
+        }else{
+            data = [config.get('openInDocker')]
+            data.push(newData)
+        }
+        
         do{
-            data.terminalName = await vscode.window.showInputBox({
+            newData.terminalName = await vscode.window.showInputBox({
                 placeHolder: "Terminal name",
                 prompt: "Insert the name for terminal ex. \"back-end container\""
             });
             
-            if(data.terminalName === undefined){
+            if(newData.terminalName === undefined){
                 return undefined
             }
-        }while(['',0,null,undefined].includes(data.terminalName));
+        }while(['',0,null,undefined].includes(newData.terminalName));
 
         do{
-            data.shell = await vscode.window.showQuickPick(shellOptions,{
+            newData.shell = await vscode.window.showQuickPick(shellOptions,{
                 placeHolder: "Select container default terminal",
             });
 
-            if(data.shell === undefined){
+            if(newData.shell === undefined){
                 return undefined
             }
-        }while(!shellOptions.includes(data.shell));
+        }while(!shellOptions.includes(newData.shell));
 
         const containers = dockerContainers();
 
         do{
-            data.container = await vscode.window.showQuickPick(containers,{
+            newData.container = await vscode.window.showQuickPick(containers,{
                 placeHolder: "Select the container in which you want to open the terminal",
             });
 
-            if(data.container === undefined){
+            if(newData.container === undefined){
                 return undefined
             }
-        }while(!containers.includes(data.container));
+        }while(!containers.includes(newData.container));
 
-        config.update('openInDocker',data,null)
+        config.update('openInDocker',newData,null)
 
-        return data
+        return newData
     }
 
     let dockerContainers = () => {
@@ -115,11 +141,12 @@ function activate(context) {
             vscode.workspace.workspaceFolders[0].uri
         )
 
-        if(config.get('openInDocker') !== undefined){
-            return config.get('openInDocker')
+        if(config.get('openInDocker') === undefined){
+            return setConfig()
         }
 
-        return setConfig()
+        //TODO:: bisogna chiedere quale connessione vuole se ce ne sono più di una
+        return config.get('openInDocker')
     }
 
 	context.subscriptions.push(disposable);
