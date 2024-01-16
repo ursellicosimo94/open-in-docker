@@ -2,7 +2,7 @@
   "name": "open-in-docker",
   "displayName": "Open Docker project terminal",
   "description": "This extension adds a button in the status bar to open the project's container terminal in the Visual Studio Code window",
-  "publisher": "Urselli Cosimo",
+  "publisher": "UrselliCosimo",
   "version": "0.0.1",
   "repository": {
     "type": "git",
