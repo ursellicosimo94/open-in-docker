@@ -22,10 +22,47 @@ function activate(context) {
     statusBarItem.text =`$(terminal-view-icon) Container`
     statusBarItem.show()
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with  registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('open-in-docker.openTerminal', async () => {
+    const addConfigCommand = vscode.commands.registerCommand('open-in-docker.addConfigCommand', async () => {
+        await addConfig()
+    })
+
+    /**
+     * Comando per la rimozione di una o più configurazioni
+     */
+	let removeConfigs = vscode.commands.registerCommand('open-in-docker.removeConfigs', async () => {
+        let toRemove
+
+        do{
+            toRemove = await vscode.window.showQuickPick(getConfigList(),{
+                placeHolder: "Select the configurations to remove",
+                canPickMany: true
+            });
+
+            if(toRemove === undefined){
+                return undefined
+            }
+        }while(!toRemove.length)
+
+        const configs = getConfigs()
+
+        // List of key to save
+        const cfgKeys = getConfigList().filter((value)=>{
+            return !toRemove.includes(value)
+        })
+
+        const newCfg = {}
+
+        for(let i = 0; i < cfgKeys.length; i += 1){
+            newCfg[cfgKeys[i]] = configs[cfgKeys[i]]
+        }
+
+        saveConfigs(newCfg)
+    })
+
+    /**
+     * Comando per aprire il terminale docker di una configurazione
+     */
+	let openTerminal = vscode.commands.registerCommand('open-in-docker.openTerminal', async () => {
         let cnf = await getConfig()
 
         if(cnf === undefined){
@@ -42,79 +79,10 @@ function activate(context) {
         terminal.sendText(`clear`)
 	});
 
-    let setConfig = async ()=>{
-        // Opzioni di configurazione
-        const config = vscode.workspace.getConfiguration(
-            'launch',
-            vscode.workspace.workspaceFolders[0].uri
-        )
-
-        let multiple
-        const newConn = 'Configure another container'
-        const resetConn = 'Reset all configurations'
-        const options = [newConn, resetConn]
-
-        if(config.get('openInDocker') !== undefined){
-            do{
-                multiple = await vscode.window.showQuickPick(options,{
-                    placeHolder: "One or more connections are already present!",
-                });
-    
-                if(multiple === undefined){
-                    return undefined
-                }
-            }while(!options.includes(multiple));
-        }
-
-        let data
-        let newData = {}
-
-        if( multiple === newConn ){
-            data = {...config.get('openInDocker')}
-            newData = data
-        }else{
-            data = [config.get('openInDocker')]
-            data.push(newData)
-        }
-        
-        do{
-            newData.terminalName = await vscode.window.showInputBox({
-                placeHolder: "Terminal name",
-                prompt: "Insert the name for terminal ex. \"back-end container\""
-            });
-            
-            if(newData.terminalName === undefined){
-                return undefined
-            }
-        }while(['',0,null,undefined].includes(newData.terminalName));
-
-        do{
-            newData.shell = await vscode.window.showQuickPick(shellOptions,{
-                placeHolder: "Select container default terminal",
-            });
-
-            if(newData.shell === undefined){
-                return undefined
-            }
-        }while(!shellOptions.includes(newData.shell));
-
-        const containers = dockerContainers();
-
-        do{
-            newData.container = await vscode.window.showQuickPick(containers,{
-                placeHolder: "Select the container in which you want to open the terminal",
-            });
-
-            if(newData.container === undefined){
-                return undefined
-            }
-        }while(!containers.includes(newData.container));
-
-        config.update('openInDocker',newData,null)
-
-        return newData
-    }
-
+    /**
+     * Recupera la lista dei container esistenti
+     * @returns {Array} Lista dei container esistenti
+     */
     let dockerContainers = () => {
         const output = exec.execSync('docker ps')
         
@@ -133,23 +101,164 @@ function activate(context) {
         }
         return containers
     }
-
+    
+    /**
+     * Restituisce i dati di una configurazione o se non ce ne sono ne crea una nuova
+     * 
+     * @returns {Promise} Dati di una configurazione
+     */
     let getConfig = async ()=>{
         // Opzioni di configurazione
-        const config = vscode.workspace.getConfiguration(
+        const configs = getConfigs()
+
+        const cnfList = getConfigList()
+
+        switch(cnfList.length){
+            case 0:
+                return await addConfig()
+            case 1:
+                return configs[cnfList[0]]
+        }
+
+        const configName = await vscode.window.showQuickPick(cnfList,{
+            placeHolder: "Select the container in which you want to open the terminal",
+        });
+
+        return configs[configName]
+    }
+
+    /**
+     * Raccoglie i dati per una nuova configurazione e li salva
+     * 
+     * @returns {Promise} Restituisce un'oggetto con i dati della nuova configurazione
+     */
+    const addConfig = async () => {
+        let newConfigName
+        let override
+        const configsList = getConfigList()
+        const configs = getConfigs()
+
+        do{
+            newConfigName = await vscode.window.showInputBox({
+                placeHolder: "Configuration Name",
+                prompt: "Insert the name for configuration ex. \"container back-end bash\""
+            });
+            
+            if(newConfigName === undefined){
+                return undefined
+            }
+
+            if(configsList.includes(newConfigName)){
+                do{
+                    override = await vscode.window.showQuickPick(['Yes','No'],{
+                        placeHolder: "A connection with this name already exists, do you want to overwrite it?"
+                    });
+
+                    if(override === 'No'){
+                        newConfigName = null
+                    }
+                }while(!['Yes','No'].includes(override))
+            }
+        }while(['',0,null,undefined].includes(newConfigName))
+
+        const newConfigData = await getNewConfig()
+
+        if(!newConfigData){
+            return
+        }
+
+        configs[newConfigName] = newConfigData
+
+        saveConfigs(configs)
+
+        return newConfigData
+    }
+
+    /**
+     * Save configs data
+     * @param {Object} configsData Configs data 
+     */
+    const saveConfigs = (configsData) => {
+        const configs = vscode.workspace.getConfiguration(
             'launch',
             vscode.workspace.workspaceFolders[0].uri
         )
 
-        if(config.get('openInDocker') === undefined){
-            return setConfig()
-        }
-
-        //TODO:: bisogna chiedere quale connessione vuole se ce ne sono più di una
-        return config.get('openInDocker')
+        configs.update('openInDocker',configsData)
     }
 
-	context.subscriptions.push(disposable);
+    /**
+     * Get configurations data
+     * @returns {Object} openInDocker configuration 
+     */
+    const getConfigs = () => {
+        const configs = vscode.workspace.getConfiguration(
+            'launch',
+            vscode.workspace.workspaceFolders[0].uri
+        )
+
+        if(configs.get('openInDocker') === undefined){
+            configs.update('openInDocker',{})
+            return {}
+        }
+
+        return configs.get('openInDocker')
+    }
+
+    /**
+     * List of configurations names
+     * @returns {Array} ["conf1", "conf2"]
+     */
+    const getConfigList = () => {
+        return Object.keys(getConfigs())
+    }
+
+    /**
+     * Get data for new connection
+     * @returns {Promise} New connection data as object
+     */
+    const getNewConfig = async ()=>{
+        const newData = {}
+
+        do{
+            newData.terminalName = await vscode.window.showInputBox({
+                placeHolder: "Terminal name",
+                prompt: "Insert the name for terminal ex. \"back-end container\""
+            });
+            
+            if(newData.terminalName === undefined){
+                return undefined
+            }
+        }while(['',0,null,undefined].includes(newData.terminalName))
+
+        do{
+            newData.shell = await vscode.window.showQuickPick(shellOptions,{
+                placeHolder: "Select container default terminal",
+            });
+
+            if(newData.shell === undefined){
+                return undefined
+            }
+        }while(!shellOptions.includes(newData.shell))
+
+        const containers = dockerContainers()
+
+        do{
+            newData.container = await vscode.window.showQuickPick(containers,{
+                placeHolder: "Select the container in which you want to open the terminal",
+            });
+
+            if(newData.container === undefined){
+                return undefined
+            }
+        }while(!containers.includes(newData.container))
+
+        return newData
+    }
+
+	context.subscriptions.push(openTerminal);
+	context.subscriptions.push(addConfigCommand);
+	context.subscriptions.push(removeConfigs);
 }
 
 // This method is called when your extension is deactivated

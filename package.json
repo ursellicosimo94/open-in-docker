@@ -23,6 +23,14 @@
         {
           "command": "open-in-docker.openTerminal",
           "title": "OpenInDocker: Open docker terminal"
+        },
+        {
+          "command": "open-in-docker.addConfigCommand",
+          "title": "OpenInDocker: Add new configuration"
+        },
+        {
+          "command": "open-in-docker.removeConfigs",
+          "title": "OpenInDocker: Remove existents configurations"
         }
     ]
   },
